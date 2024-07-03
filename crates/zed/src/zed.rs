@@ -947,7 +947,7 @@ fn open_settings_file(
 mod tests {
     use super::*;
     use assets::Assets;
-    use collections::HashSet;
+    use collections::{HashMap, HashSet};
     use editor::{display_map::DisplayRow, scroll::Autoscroll, DisplayPoint, Editor};
     use gpui::{
         actions, Action, AnyWindowHandle, AppContext, AssetSource, BorrowAppContext, Entity,
@@ -958,11 +958,14 @@ mod tests {
     use serde_json::json;
     use settings::{handle_settings_file_changes, watch_config_file, SettingsStore};
     use std::path::{Path, PathBuf};
+    use task::{ResolvedTask, RevealStrategy, SpawnInTerminal};
+    use terminal_view::TerminalView;
     use theme::{ThemeRegistry, ThemeSettings};
     use workspace::{
         item::{Item, ItemHandle},
-        open_new, open_paths, pane, NewFile, OpenVisible, SaveIntent, SplitDirection,
-        WorkspaceHandle,
+        open_new, open_paths, pane,
+        tasks::schedule_resolved_task,
+        NewFile, OpenVisible, SaveIntent, SplitDirection, WorkspaceHandle,
     };
 
     #[gpui::test]
@@ -3153,6 +3156,120 @@ mod tests {
                 .unwrap();
         }
         cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn test_spawn_terminal_task_real_fs(cx: &mut TestAppContext) {
+        let app_state = cx.update(|cx| {
+            env_logger::builder().is_test(true).try_init().ok();
+
+            let mut app_state = AppState::test(cx);
+
+            let state = Arc::get_mut(&mut app_state).unwrap();
+            state.build_window_options = build_window_options;
+            state.fs = Arc::new(fs::RealFs::default());
+
+            app_state.languages.add(markdown_language());
+
+            theme::init(theme::LoadThemes::JustBase, cx);
+            audio::init((), cx);
+            channel::init(&app_state.client, app_state.user_store.clone(), cx);
+            call::init(app_state.client.clone(), app_state.user_store.clone(), cx);
+            notifications::init(app_state.client.clone(), app_state.user_store.clone(), cx);
+            workspace::init(app_state.clone(), cx);
+            Project::init_settings(cx);
+            release_channel::init(SemanticVersion::default(), cx);
+            command_palette::init(cx);
+            language::init(cx);
+            editor::init(cx);
+            collab_ui::init(&app_state, cx);
+            project_panel::init((), cx);
+            outline_panel::init((), cx);
+            terminal_view::init(cx);
+            assistant::init(app_state.fs.clone(), app_state.client.clone(), cx);
+            tasks_ui::init(cx);
+            initialize_workspace(app_state.clone(), cx);
+            app_state
+        });
+        cx.executor().allow_parking();
+        // app_state
+        //     .fs
+        //     .as_fake()
+        //     .insert_tree(
+        //         "/project-root",
+        //         json!({
+        //             "sample.abc": ""
+        //         }),
+        //     )
+        //     .await;
+        let project_root = util::test::temp_tree(json!({
+            "sample.txt": ""
+        }));
+
+        let spawn_in_terminal = SpawnInTerminal {
+            // command: "echo hello".to_string(),
+            command: "echo abc".to_string(),
+            // command: "should-be-an-error".to_string(),
+            cwd: None,
+            env: HashMap::default(),
+            id: task::TaskId(String::from("sample-id")),
+            full_label: String::from("sample-full_label"),
+            label: String::from("sample-label"),
+            args: vec![],
+            command_label: String::from("sample-command_label"),
+            use_new_terminal: false,
+            allow_concurrent_runs: false,
+            reveal: RevealStrategy::Always,
+        };
+        let project = Project::test(app_state.fs.clone(), [project_root.path()], cx).await;
+        let window = cx.add_window(|cx| Workspace::test_new(project, cx));
+        cx.run_until_parked();
+        cx.update(|cx| {
+            window
+                .update(cx, |_workspace, cx| {
+                    cx.emit(workspace::Event::SpawnTask(spawn_in_terminal));
+                })
+                .unwrap();
+        });
+        cx.run_until_parked();
+
+        window
+            .update(cx, |workspace, cx| {
+                let project = workspace.project().read(cx);
+                dbg!(project.local_terminal_handles().len());
+                let term = project
+                    .local_terminal_handles()
+                    .first()
+                    .unwrap()
+                    .upgrade()
+                    .unwrap()
+                    .read(cx);
+                dbg!(term.last_n_non_empty_lines(20));
+
+                // for p in workspace.panes() {
+                //     dbg!(p.read(cx).items().count());
+                // }
+                let terminal_panel = workspace
+                    .left_dock()
+                    .read(cx)
+                    .panel::<TerminalPanel>()
+                    .unwrap();
+                let pane = terminal_panel.read(cx).pane().read(cx);
+                for i in pane.items() {
+                    // let t = i.downcast::<TerminalView>().unwrap();
+                    // let t = t.read(cx).model().downcast::<terminal::Terminal>().unwrap();
+                    let task = i
+                        .act_as::<TerminalView>(cx)
+                        .unwrap()
+                        .read(cx)
+                        .terminal()
+                        .read(cx)
+                        .task()
+                        .unwrap();
+                    dbg!(&task.label);
+                }
+            })
+            .unwrap();
     }
 
     fn init_test(cx: &mut TestAppContext) -> Arc<AppState> {
