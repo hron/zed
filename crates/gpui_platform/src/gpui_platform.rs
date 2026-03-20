@@ -69,7 +69,15 @@ pub fn current_headless_renderer() -> Option<Box<dyn gpui::PlatformHeadlessRende
         ))
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        Some(Box::new(
+            gpui_wgpu::WgpuHeadlessRenderer::new()
+                .expect("failed to initialize wgpu headless renderer"),
+        ))
+    }
+
+    #[cfg(target_family = "wasm")]
     {
         None
     }

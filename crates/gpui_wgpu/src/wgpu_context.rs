@@ -76,6 +76,44 @@ impl WgpuContext {
         })
     }
 
+    #[cfg(not(target_family = "wasm"))]
+    pub async fn new_headless() -> anyhow::Result<Self> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
+            flags: wgpu::InstanceFlags::default(),
+            backend_options: wgpu::BackendOptions::default(),
+            memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+            display: None,
+        });
+
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to request GPU adapter: {e}"))?;
+
+        log::info!(
+            "Selected GPU adapter (headless): {:?} ({:?})",
+            adapter.get_info().name,
+            adapter.get_info().backend
+        );
+
+        let device_lost = Arc::new(AtomicBool::new(false));
+        let (device, queue, dual_source_blending) = Self::create_device(&adapter).await?;
+
+        Ok(Self {
+            instance,
+            adapter,
+            device: Arc::new(device),
+            queue: Arc::new(queue),
+            dual_source_blending,
+            device_lost,
+        })
+    }
+
     #[cfg(target_family = "wasm")]
     pub async fn new_web() -> anyhow::Result<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
