@@ -354,12 +354,16 @@
     "context": "AcpThread",
     "bindings": {
       "ctrl--": "pane::GoBack",
+      "ctrl-pageup": "agent::ScrollOutputPageUp",
+      "ctrl-pagedown": "agent::ScrollOutputPageDown",
     },
   },
   {
     "context": "AcpThread > Editor",
     "use_key_equivalents": true,
     "bindings": {
+      "ctrl-pageup": "agent::ScrollOutputPageUp",
+      "ctrl-pagedown": "agent::ScrollOutputPageDown",
       "shift-ctrl-r": "agent::OpenAgentDiff",
       "shift-ctrl-d": "git::Diff",
       "shift-alt-y": "agent::KeepAll",

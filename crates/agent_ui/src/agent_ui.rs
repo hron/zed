@@ -179,6 +179,10 @@ actions!(
         ToggleThinkingEffortMenu,
         /// Toggles fast mode for models that support it.
         ToggleFastMode,
+        /// Scroll the output by one page up.
+        ScrollOutputPageUp,
+        /// Scroll the output by one page down.
+        ScrollOutputPageDown,
     ]
 );
 
