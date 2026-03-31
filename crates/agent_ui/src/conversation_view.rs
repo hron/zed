@@ -84,7 +84,8 @@ use crate::{
     AuthorizeToolCall, ClearMessageQueue, CycleFavoriteModels, CycleModeSelector,
     CycleThinkingEffort, EditFirstQueuedMessage, ExpandMessageEditor, Follow, KeepAll, NewThread,
     OpenAddContextMenu, OpenAgentDiff, OpenHistory, RejectAll, RejectOnce,
-    RemoveFirstQueuedMessage, ScrollOutputPageDown, ScrollOutputPageUp, SendImmediately,
+    RemoveFirstQueuedMessage, ScrollOutputPageDown, ScrollOutputPageUp, ScrollOutputToBottom,
+    ScrollOutputToNextMessage, ScrollOutputToPreviousMessage, ScrollOutputToTop, SendImmediately,
     SendNextQueuedMessage, ToggleFastMode, ToggleProfileSelector, ToggleThinkingEffortMenu,
     ToggleThinkingMode, UndoLastReject,
 };

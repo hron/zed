@@ -356,6 +356,10 @@
       "ctrl--": "pane::GoBack",
       "ctrl-pageup": "agent::ScrollOutputPageUp",
       "ctrl-pagedown": "agent::ScrollOutputPageDown",
+      "ctrl-home": "agent::ScrollOutputToTop",
+      "ctrl-end": "agent::ScrollOutputToBottom",
+      "ctrl-alt-pageup": "agent::ScrollOutputToPreviousMessage",
+      "ctrl-alt-pagedown": "agent::ScrollOutputToNextMessage",
     },
   },
   {
@@ -364,6 +368,10 @@
     "bindings": {
       "ctrl-pageup": "agent::ScrollOutputPageUp",
       "ctrl-pagedown": "agent::ScrollOutputPageDown",
+      "ctrl-home": "agent::ScrollOutputToTop",
+      "ctrl-end": "agent::ScrollOutputToBottom",
+      "ctrl-alt-pageup": "agent::ScrollOutputToPreviousMessage",
+      "ctrl-alt-pagedown": "agent::ScrollOutputToNextMessage",
       "shift-ctrl-r": "agent::OpenAgentDiff",
       "shift-ctrl-d": "git::Diff",
       "shift-alt-y": "agent::KeepAll",

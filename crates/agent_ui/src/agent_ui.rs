@@ -183,6 +183,14 @@ actions!(
         ScrollOutputPageUp,
         /// Scroll the output by one page down.
         ScrollOutputPageDown,
+        /// Scroll the output to the top.
+        ScrollOutputToTop,
+        /// Scroll the output to the bottom.
+        ScrollOutputToBottom,
+        /// Scroll the output to the previous user message.
+        ScrollOutputToPreviousMessage,
+        /// Scroll the output to the next user message.
+        ScrollOutputToNextMessage,
     ]
 );
 
