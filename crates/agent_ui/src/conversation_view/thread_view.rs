@@ -4998,6 +4998,31 @@ impl ThreadView {
         cx.notify();
     }
 
+    fn scroll_output_line_up(
+        &mut self,
+        _: &ScrollOutputLineUp,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.list_state.set_follow_tail(false);
+        self.list_state.scroll_by(-window.line_height() * 3.);
+        cx.notify();
+    }
+
+    fn scroll_output_line_down(
+        &mut self,
+        _: &ScrollOutputLineDown,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.list_state.set_follow_tail(false);
+        self.list_state.scroll_by(window.line_height() * 3.);
+        if self.list_state.is_at_bottom() {
+            self.list_state.set_follow_tail(true);
+        }
+        cx.notify();
+    }
+
     fn scroll_output_to_top(
         &mut self,
         _: &ScrollOutputToTop,
@@ -8530,6 +8555,8 @@ impl Render for ThreadView {
             .on_action(cx.listener(Self::open_add_context_menu))
             .on_action(cx.listener(Self::scroll_output_page_up))
             .on_action(cx.listener(Self::scroll_output_page_down))
+            .on_action(cx.listener(Self::scroll_output_line_up))
+            .on_action(cx.listener(Self::scroll_output_line_down))
             .on_action(cx.listener(Self::scroll_output_to_top))
             .on_action(cx.listener(Self::scroll_output_to_bottom))
             .on_action(cx.listener(Self::scroll_output_to_previous_message))
