@@ -416,13 +416,6 @@
     },
   },
   {
-    "context": "AcpThread > Editor",
-    "bindings": {
-      "ctrl-pageup": "agent::ScrollOutputPageUp",
-      "ctrl-pagedown": "agent::ScrollOutputPageDown",
-    },
-  },
-  {
     "context": "VimControl && vim_mode == helix_normal && !menu",
     "bindings": {
       "j": ["vim::Down", { "display_lines": true }],
