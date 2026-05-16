@@ -1266,6 +1266,7 @@
       "alt-t": "terminal::RerunTask",
       "ctrl-shift-5": "pane::SplitRight",
       "ctrl->": "agent::AddSelectionToThread",
+      "ctrl-shift-o": "terminal::ActivateHints",
     },
   },
   {

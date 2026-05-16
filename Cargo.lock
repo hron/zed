@@ -18410,6 +18410,7 @@ dependencies = [
 name = "terminal_view"
 version = "0.1.0"
 dependencies = [
+ "alacritty_terminal",
  "anyhow",
  "async-recursion",
  "breadcrumbs",
@@ -18437,6 +18438,7 @@ dependencies = [
  "shellexpand",
  "shlex",
  "task",
+ "tempfile",
  "terminal",
  "theme",
  "theme_settings",
