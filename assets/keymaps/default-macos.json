@@ -1312,6 +1312,7 @@
       "cmd-d": "pane::SplitRight",
       "cmd-alt-r": "terminal::RerunTask",
       "cmd->": "agent::AddSelectionToThread",
+      "ctrl-shift-o": "terminal::ActivateHints",
     },
   },
   {

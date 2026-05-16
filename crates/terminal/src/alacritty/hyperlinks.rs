@@ -31,7 +31,7 @@ pub(crate) struct RegexSearches {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct HyperlinkMatch {
+pub struct HyperlinkMatch {
     pub(crate) text: String,
     pub(crate) is_url: bool,
     pub(crate) range: Range,
@@ -480,6 +480,150 @@ fn path_match<T>(
     None
 }
 
+/// Returns true if two inclusive grid-point match ranges overlap.
+fn matches_overlap(a: &Match, b: &Match) -> bool {
+    a.start() <= b.end() && b.start() <= a.end()
+}
+
+/// Scans the currently visible viewport for URLs and path-like strings.
+/// Returns `HyperlinkMatch` elements with precise text, URL flag, and match bounds.
+pub(crate) fn find_visible_hint_targets<T: EventListener>(
+    term: &Term<T>,
+    regex_searches: &mut RegexSearches,
+    path_style: PathStyle,
+) -> Vec<HyperlinkMatch> {
+    let mut results: Vec<HyperlinkMatch> = Vec::new();
+
+    let display_offset = term.grid().display_offset();
+    let screen_lines = term.screen_lines();
+    let last_column = term.last_column();
+
+    // Only search lines that are currently visible in the viewport.
+    // In Alacritty grid coordinates: viewport_line = grid_line + display_offset,
+    // so visible lines run from -(display_offset) to (screen_lines - 1 - display_offset).
+    let first_visible = alacritty_terminal::index::Line(-(display_offset as i32));
+    let last_visible =
+        alacritty_terminal::index::Line(screen_lines as i32 - 1 - display_offset as i32);
+
+    for line in first_visible.0..=last_visible.0 {
+        let line = alacritty_terminal::index::Line(line);
+        let line_start = AlacPoint::new(line, Column(0));
+        let line_end = AlacPoint::new(line, last_column);
+
+        // URL match ranges found on this line, used to suppress path hints that cover
+        // the same region (see the path scan below).
+        let mut url_match_ranges: Vec<Match> = Vec::new();
+
+        if let Some(ref mut url_regex) = regex_searches.url_regex {
+            // Scan for URLs on this line.
+            let url_iter =
+                RegexIter::new(line_start, line_end, AlacDirection::Right, term, url_regex);
+            for url_match in url_iter {
+                let url_text = term.bounds_to_string(*url_match.start(), *url_match.end());
+                let (url_text, sanitized_match) =
+                    sanitize_url_punctuation(url_text, url_match, term);
+                if url_text.is_empty() {
+                    continue;
+                }
+                // Convert file:// URLs to paths.
+                let (final_text, is_url) = if url_text.starts_with("file://") {
+                    if let Ok(url) = Url::parse(&url_text) {
+                        if let Ok(path) = url.to_file_path_ext(path_style) {
+                            (path.to_string_lossy().into_owned(), false)
+                        } else if let Some(path) = try_osc8_url_to_path(url)
+                            && path_style.is_posix()
+                        {
+                            (path, false)
+                        } else {
+                            let path = url_text
+                                .strip_prefix("file://")
+                                .unwrap_or(&url_text)
+                                .to_string();
+                            (path, false)
+                        }
+                    } else {
+                        (url_text, true)
+                    }
+                } else {
+                    (url_text, true)
+                };
+                url_match_ranges.push(sanitized_match.clone());
+                results.push(HyperlinkMatch::from((final_text, is_url, sanitized_match)));
+            }
+        }
+
+        // Scan for path-like strings on this line using configured regexes.
+        if regex_searches.path_hyperlink_regexes.is_empty() {
+            continue;
+        }
+        let line_text = term.bounds_to_string(line_start, line_end);
+        let line_text = line_text.trim_ascii_end();
+        if line_text.is_empty() {
+            continue;
+        }
+        for regex in &regex_searches.path_hyperlink_regexes {
+            for captures in regex.captures_iter(line_text) {
+                let Some(full_match) = captures.get(0) else {
+                    continue;
+                };
+                let Some(path_match) = captures.name("path").or(Some(full_match)) else {
+                    continue;
+                };
+                let link_match = captures.name("link").unwrap_or(path_match);
+                let (path_text, link_start, link_len) = if captures.name("path").is_some() {
+                    let mut path = path_match.as_str().to_string();
+                    if let Some(line) = captures.name("line") {
+                        path.push(':');
+                        path.push_str(line.as_str());
+                        if let Some(column) = captures.name("column") {
+                            path.push(':');
+                            path.push_str(column.as_str());
+                        }
+                    }
+                    (
+                        path,
+                        link_match.start(),
+                        link_match.as_str().chars().count(),
+                    )
+                } else {
+                    let untrimmed = path_match.as_str();
+                    let trimmed_start = untrimmed.trim_start();
+                    let leading_bytes = untrimmed.len() - trimmed_start.len();
+                    let trimmed = trimmed_start.trim_end();
+                    (
+                        trimmed.to_string(),
+                        path_match.start() + leading_bytes,
+                        trimmed.chars().count(),
+                    )
+                };
+                if path_text.is_empty() {
+                    continue;
+                }
+                // Count Unicode scalar values before the match start to get the terminal
+                // column. Using byte offset directly would miscount multi-byte chars (e.g.
+                // the fish prompt '❯' is 3 bytes but occupies 1 column).
+                // Wide chars (2 columns each) are still approximated as 1 here.
+                let start_col = Column(line_text[..link_start].chars().count());
+                let end_col = Column(start_col.0 + link_len.saturating_sub(1));
+                let match_range = AlacPoint::new(line, start_col)..=AlacPoint::new(line, end_col);
+                // URLs take priority over path matches covering the same region, mirroring
+                // `find_from_grid_point` (mouse/hover) where path matching only runs when no
+                // URL is found. Otherwise a URL like `https://example.com` also matches the
+                // generic path regex and would produce a duplicate, broken path hint.
+                if url_match_ranges
+                    .iter()
+                    .any(|url_range| matches_overlap(url_range, &match_range))
+                {
+                    continue;
+                }
+                results.push(HyperlinkMatch::from((path_text, false, match_range)));
+            }
+        }
+    }
+
+    results
+}
+
 #[cfg(test)]
 mod tests {
     use crate::terminal_settings::TerminalSettings;
@@ -627,6 +771,71 @@ mod tests {
             let (result, _) = sanitize_url_punctuation(input.to_string(), dummy_match, &term);
             assert_eq!(result, expected, "Failed for input: {}", input);
         }
+    }
+
+    #[test]
+    fn visible_hint_targets_use_named_path_line_column_captures() {
+        let (term, _) = build_term_from_test_lines(
+            HyperlinkKind::Path,
+            TermSize::new(100, 2),
+            ["thread 'tests::test_cd' panicked at ‹«👉src/main.rs»:«115»:«9»›:"].into_iter(),
+        );
+        let mut regex_searches = RegexSearches::new(
+            [r#"panicked at (?<link>(?<path>[^:]+):(?<line>[0-9]+):(?<column>[0-9]+)):"#],
+            1000,
+        );
+
+        let targets = find_visible_hint_targets(&term, &mut regex_searches, PathStyle::local());
+
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].text, "src/main.rs:115:9");
+        assert!(!targets[0].is_url);
+        assert_eq!(
+            term.bounds_to_string(
+                *targets[0].range.to_alacritty().start(),
+                *targets[0].range.to_alacritty().end(),
+            ),
+            "src/main.rs:115:9"
+        );
+    }
+
+    #[test]
+    fn visible_hint_targets_classify_urls_as_urls_not_paths() {
+        use alacritty_terminal::vte::ansi::Handler;
+
+        // The generic path regex shipped in `default.json` also matches URLs. The hint
+        // scan must not emit such a region as a (broken) path hint in addition to the URL
+        // hint, mirroring the URL-first priority of `find_from_grid_point` (mouse/hover).
+        let generic_path_regex = [
+            "(?x)",
+            "(?<path>",
+            "    (",
+            "        [^({\\[<\"'`\\ \\u2500-\\u257F]",
+            "        ([^\\ :(]|[:(][^0-9()\\ ])*",
+            "        [^()}\\]>\"'`.,;:\\ ]",
+            "    |",
+            "        [^(){}\\[\\]<>\"'`.,;:\\ \\u2500-\\u257F]",
+            "    )",
+            "    (:+[0-9]+(:[0-9]+)?|:?\\([0-9]+([,:]?[0-9]+)?\\))?",
+            ")",
+        ]
+        .concat();
+
+        let mut term = Term::new(Config::default(), &TermSize::new(80, 2), VoidListener);
+        for c in "https://example.com".chars() {
+            term.input(c);
+        }
+
+        let mut regex_searches = RegexSearches::new([generic_path_regex], 1000);
+        let targets = find_visible_hint_targets(&term, &mut regex_searches, PathStyle::local());
+
+        assert_eq!(
+            targets.len(),
+            1,
+            "URL should produce exactly one hint, got: {targets:?}"
+        );
+        assert!(targets[0].is_url, "URL hint must be classified as a URL");
+        assert_eq!(targets[0].text, "https://example.com");
     }
 
     macro_rules! test_hyperlink {
